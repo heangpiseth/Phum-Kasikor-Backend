@@ -1,0 +1,24 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+class InventoryCategory extends Model
+{
+    protected $table = 'inventory_categories';
+
+    protected $fillable = [
+        'name',
+        'icon',
+    ];
+
+    public function inventory(): HasMany
+    {
+        return $this->hasMany(
+            Inventory::class,
+            'category_id'
+        );
+    }
+}
