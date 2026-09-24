@@ -3,33 +3,21 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
-// ============================================================
 // LOCATION
-// ============================================================
-
 use App\Http\Controllers\Api\LocationController;
 
-// ============================================================
 // AUTH
-// ============================================================
-
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\Auth\FirebaseAuthController;
 use App\Http\Controllers\Api\Auth\ProfileController;
 
-// ============================================================
 // CUSTOMER
-// ============================================================
-
 use App\Http\Controllers\Api\Customer\CustomerController;
 use App\Http\Controllers\Api\Customer\CartController;
 use App\Http\Controllers\Api\Customer\ProductController as CustomerProductController;
 use App\Http\Controllers\Api\Customer\OrderController as CustomerOrderController;
 
-// ============================================================
 // FARMER
-// ============================================================
-
 use App\Http\Controllers\Api\Farmer\AiChatController;
 use App\Http\Controllers\Api\Farmer\HarvestController;
 use App\Http\Controllers\Api\Farmer\FarmerController;
@@ -42,12 +30,17 @@ use App\Http\Controllers\Api\Farmer\WateringRecommendationController;
 
 
 // ============================================================
-// PUBLIC ROUTES
+// LOCATION
 // ============================================================
 
 Route::get('/locations', [
     LocationController::class,
-    'index',
+    'index'
+]);
+
+Route::post('/location/reverse-geocode', [
+    LocationController::class,
+    'reverseGeocode'
 ]);
 
 
@@ -57,40 +50,36 @@ Route::get('/locations', [
 
 Route::prefix('auth')->group(function () {
 
-    // Register
     Route::post('/register', [
         AuthController::class,
-        'register',
+        'register'
     ]);
 
-    // Login
     Route::post('/login', [
         AuthController::class,
-        'login',
+        'login'
     ]);
 
-    // Verify account
     Route::post('/verify', [
         AuthController::class,
-        'verify',
+        'verify'
     ]);
 
-    // Firebase authentication
     Route::post('/firebase/verify', [
         FirebaseAuthController::class,
-        'verify',
+        'verify'
     ]);
 });
 
 
 // ============================================================
-// PROTECTED ROUTES
+// PROTECTED
 // ============================================================
 
 Route::middleware('auth:sanctum')->group(function () {
 
     // ========================================================
-    // AUTH / USER
+    // CURRENT USER
     // ========================================================
 
     Route::get('/me', function (Request $request) {
@@ -102,25 +91,44 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('/logout', [
         AuthController::class,
-        'logout',
+        'logout'
     ]);
 
-    // Profile
+
+    // ========================================================
+    // PROFILE
+    // ========================================================
+
     Route::prefix('profile')->group(function () {
 
         Route::get('/', [
             ProfileController::class,
-            'show',
+            'show'
         ]);
 
         Route::put('/', [
             ProfileController::class,
-            'update',
+            'update'
         ]);
 
         Route::post('/image', [
             ProfileController::class,
-            'updateImage',
+            'updateImage'
+        ]);
+
+        Route::put('/choose-role', [
+            ProfileController::class,
+            'chooseRole'
+        ]);
+
+        Route::put('/location', [
+            ProfileController::class,
+            'setupLocation'
+        ]);
+
+        Route::put('/setup', [
+            ProfileController::class,
+            'setupProfile'
         ]);
     });
 
@@ -131,123 +139,98 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::prefix('customer')->group(function () {
 
-        // ----------------------------------------------------
-        // CUSTOMER HOME
-        // ----------------------------------------------------
-
         Route::get('/', [
             CustomerController::class,
-            'index',
+            'index'
         ]);
-
-
-        // ----------------------------------------------------
-        // CATEGORIES
-        // ----------------------------------------------------
 
         Route::get('/categories', [
             CustomerProductController::class,
-            'categories',
+            'categories'
         ]);
-
-
-        // ----------------------------------------------------
-        // PRODUCTS
-        // ----------------------------------------------------
 
         Route::get('/products', [
             CustomerProductController::class,
-            'index',
+            'index'
         ]);
 
         Route::get('/products/{product}', [
             CustomerProductController::class,
-            'show',
+            'show'
         ]);
 
 
-        // ----------------------------------------------------
         // CART
-        // ----------------------------------------------------
 
         Route::get('/cart', [
             CartController::class,
-            'index',
+            'index'
         ]);
 
         Route::post('/cart/items', [
             CartController::class,
-            'addItem',
+            'addItem'
         ]);
 
         Route::put('/cart/items/{item}', [
             CartController::class,
-            'updateItem',
+            'updateItem'
         ]);
 
         Route::delete('/cart/items/{item}', [
             CartController::class,
-            'removeItem',
+            'removeItem'
         ]);
 
         Route::delete('/cart', [
             CartController::class,
-            'clear',
+            'clear'
         ]);
 
 
-        // ----------------------------------------------------
         // ORDERS
-        // ----------------------------------------------------
 
         Route::get('/orders', [
             CustomerOrderController::class,
-            'index',
+            'index'
         ]);
 
         Route::post('/orders', [
             CustomerOrderController::class,
-            'store',
+            'store'
         ]);
 
         Route::get('/orders/{order}', [
             CustomerOrderController::class,
-            'show',
+            'show'
         ]);
 
         Route::post('/orders/{order}/cancel', [
             CustomerOrderController::class,
-            'cancel',
+            'cancel'
         ]);
 
 
-        // ----------------------------------------------------
         // FAVORITES
-        // ----------------------------------------------------
 
         Route::get('/favorites', [
             CustomerController::class,
-            'favorites',
+            'favorites'
         ]);
 
         Route::post('/favorites/{product}', [
             CustomerController::class,
-            'toggleFavorite',
+            'toggleFavorite'
         ]);
-
-
-        // ----------------------------------------------------
-        // FARM FAVORITES
-        // ----------------------------------------------------
 
         Route::get('/farm-favorites', [
             CustomerController::class,
-            'farmFavorites',
+            'farmFavorites'
         ]);
 
         Route::post('/farm-favorites/{farm}', [
             CustomerController::class,
-            'toggleFarmFavorite',
+            'toggleFarmFavorite'
         ]);
     });
 
@@ -258,81 +241,91 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::prefix('farmer')->group(function () {
 
-        // ====================================================
-        // AI AGRICULTURE ASSISTANT
-        // ====================================================
+        // ----------------------------------------------------
+        // AI
+        // ----------------------------------------------------
 
         Route::post('/ai/chat', [
             AiChatController::class,
-            'chat',
+            'chat'
         ]);
 
 
-        // ====================================================
+        // ----------------------------------------------------
         // WEATHER
-        // ====================================================
+        // ----------------------------------------------------
 
         Route::get('/weather', [
             WeatherController::class,
-            'index',
+            'index'
         ]);
 
 
-        // ====================================================
+        // ----------------------------------------------------
         // WATERING RECOMMENDATION
-        // ====================================================
+        // ----------------------------------------------------
 
         Route::get('/watering-recommendation', [
             WateringRecommendationController::class,
-            'index',
+            'index'
+        ]);
+
+        Route::get('/watering-recommendation/{crop}', [
+            WateringRecommendationController::class,
+            'show'
         ]);
 
 
-        // ====================================================
+        // ----------------------------------------------------
         // FARMER VERIFICATION
-        // ====================================================
+        // ----------------------------------------------------
 
         Route::prefix('verification')->group(function () {
 
             Route::get('/', [
                 FarmerVerificationController::class,
-                'show',
+                'show'
             ]);
 
             Route::post('/', [
                 FarmerVerificationController::class,
-                'store',
+                'store'
             ]);
 
-            Route::delete('/verification', [
+            Route::delete('/', [
                 FarmerVerificationController::class,
-                'destroy',
+                'destroy'
             ]);
         });
 
 
         // ====================================================
-        // FARM
+        // FARMS
         // ====================================================
 
-        Route::get('/farm', [
+        Route::get('/farms', [
             FarmerController::class,
-            'showFarm',
+            'index'
         ]);
 
-        Route::post('/farm', [
+        Route::post('/farms', [
             FarmerController::class,
-            'storeFarm',
+            'store'
         ]);
 
-        Route::put('/farm', [
+        Route::get('/farms/{farm}', [
             FarmerController::class,
-            'updateFarm',
+            'show'
         ]);
 
-        Route::delete('/farm', [
+        Route::put('/farms/{farm}', [
             FarmerController::class,
-            'destroyFarm',
+            'update'
+        ]);
+
+        Route::delete('/farms/{farm}', [
+            FarmerController::class,
+            'destroy'
         ]);
 
 
@@ -340,29 +333,29 @@ Route::middleware('auth:sanctum')->group(function () {
         // FIELDS
         // ====================================================
 
-        Route::get('/fields', [
+        Route::get('/farms/{farm}/fields', [
             FarmerController::class,
-            'fields',
+            'fields'
         ]);
 
-        Route::post('/fields', [
+        Route::post('/farms/{farm}/fields', [
             FarmerController::class,
-            'storeField',
+            'storeField'
         ]);
 
-        Route::get('/fields/{field}', [
+        Route::get('/farms/{farm}/fields/{field}', [
             FarmerController::class,
-            'showField',
+            'showField'
         ]);
 
-        Route::put('/fields/{field}', [
+        Route::put('/farms/{farm}/fields/{field}', [
             FarmerController::class,
-            'updateField',
+            'updateField'
         ]);
 
-        Route::delete('/fields/{field}', [
+        Route::delete('/farms/{farm}/fields/{field}', [
             FarmerController::class,
-            'destroyField',
+            'destroyField'
         ]);
 
 
@@ -370,29 +363,29 @@ Route::middleware('auth:sanctum')->group(function () {
         // CROPS
         // ====================================================
 
-        Route::get('/crops', [
+        Route::get('/farms/{farm}/crops', [
             FarmerController::class,
-            'crops',
+            'crops'
         ]);
 
-        Route::post('/crops', [
+        Route::post('/farms/{farm}/crops', [
             FarmerController::class,
-            'storeCrop',
+            'storeCrop'
         ]);
 
-        Route::get('/crops/{crop}', [
+        Route::get('/farms/{farm}/crops/{crop}', [
             FarmerController::class,
-            'showCrop',
+            'showCrop'
         ]);
 
-        Route::put('/crops/{crop}', [
+        Route::put('/farms/{farm}/crops/{crop}', [
             FarmerController::class,
-            'updateCrop',
+            'updateCrop'
         ]);
 
-        Route::delete('/crops/{crop}', [
+        Route::delete('/farms/{farm}/crops/{crop}', [
             FarmerController::class,
-            'destroyCrop',
+            'destroyCrop'
         ]);
 
 
@@ -402,118 +395,175 @@ Route::middleware('auth:sanctum')->group(function () {
 
         Route::get('/watering-logs', [
             FarmerController::class,
-            'wateringLogs',
+            'wateringLogs'
         ]);
 
         Route::post('/watering-logs', [
             FarmerController::class,
-            'storeWateringLog',
+            'storeWateringLog'
         ]);
 
         Route::get('/watering-logs/{wateringLog}', [
             FarmerController::class,
-            'showWateringLog',
+            'showWateringLog'
         ]);
 
         Route::put('/watering-logs/{wateringLog}', [
             FarmerController::class,
-            'updateWateringLog',
+            'updateWateringLog'
         ]);
 
         Route::delete('/watering-logs/{wateringLog}', [
             FarmerController::class,
-            'destroyWateringLog',
+            'destroyWateringLog'
         ]);
 
 
         // ====================================================
-        // HARVEST
+        // HARVESTS
         // ====================================================
 
         Route::get('/harvests', [
             HarvestController::class,
-            'index',
+            'index'
         ]);
 
         Route::post('/harvests', [
             HarvestController::class,
-            'store',
+            'store'
         ]);
 
         Route::get('/harvests/{harvest}', [
             HarvestController::class,
-            'show',
+            'show'
         ]);
 
         Route::put('/harvests/{harvest}', [
             HarvestController::class,
-            'update',
+            'update'
         ]);
 
         Route::delete('/harvests/{harvest}', [
             HarvestController::class,
-            'destroy',
+            'destroy'
         ]);
 
 
         // ====================================================
-        // FARMER PRODUCTS
+        // PRODUCTS
         // ====================================================
 
-        Route::get('/products', [
+        Route::get('/farms/{farm}/products', [
             FarmerProductController::class,
-            'index',
+            'index'
         ]);
 
-        Route::post('/products', [
+        Route::post('/farms/{farm}/products', [
             FarmerProductController::class,
-            'store',
+            'store'
         ]);
 
-        Route::get('/products/{product}', [
+        Route::get('/farms/{farm}/products/{product}', [
             FarmerProductController::class,
-            'show',
+            'show'
         ]);
 
-        Route::put('/products/{product}', [
+        Route::put('/farms/{farm}/products/{product}', [
             FarmerProductController::class,
-            'update',
+            'update'
         ]);
 
-        Route::delete('/products/{product}', [
+        Route::delete('/farms/{farm}/products/{product}', [
             FarmerProductController::class,
-            'destroy',
+            'destroy'
         ]);
+
+
+        // ====================================================
+        // PRODUCT IMAGES
+        // ====================================================
+
+        Route::post(
+            '/farms/{farm}/products/{product}/images',
+            [
+                FarmerProductController::class,
+                'storeImage'
+            ]
+        );
+
+        Route::delete(
+            '/farms/{farm}/products/{product}/images/{image}',
+            [
+                FarmerProductController::class,
+                'destroyImage'
+            ]
+        );
+
+        Route::put(
+            '/farms/{farm}/products/{product}/images/{image}/primary',
+            [
+                FarmerProductController::class,
+                'setPrimaryImage'
+            ]
+        );
+
+
+        // ====================================================
+        // INVENTORY CATEGORIES
+        // ====================================================
+
+        Route::get(
+            '/farms/{farm}/inventory/categories',
+            [
+                InventoryController::class,
+                'categories'
+            ]
+        );
+
+        Route::post(
+            '/farms/{farm}/inventory/categories',
+            [
+                InventoryController::class,
+                'storeCategory'
+            ]
+        );
 
 
         // ====================================================
         // INVENTORY
         // ====================================================
 
-        Route::get('/inventory', [
-            InventoryController::class,
-            'index',
-        ]);
+        Route::get(
+            '/farms/{farm}/inventory',
+            [
+                InventoryController::class,
+                'index'
+            ]
+        );
 
-        Route::post('/inventory', [
-            InventoryController::class,
-            'store',
-        ]);
+        Route::post(
+            '/farms/{farm}/inventory',
+            [
+                InventoryController::class,
+                'store'
+            ]
+        );
 
-        Route::get('/inventory/{inventory}', [
-            InventoryController::class,
-            'show',
-        ]);
+        Route::put(
+            '/farms/{farm}/inventory/{item}',
+            [
+                InventoryController::class,
+                'update'
+            ]
+        );
 
-        Route::put('/inventory/{inventory}', [
-            InventoryController::class,
-            'update',
-        ]);
-
-        Route::delete('/inventory/{inventory}', [
-            InventoryController::class,
-            'destroy',
-        ]);
+        Route::delete(
+            '/farms/{farm}/inventory/{item}',
+            [
+                InventoryController::class,
+                'destroy'
+            ]
+        );
 
 
         // ====================================================
@@ -522,27 +572,27 @@ Route::middleware('auth:sanctum')->group(function () {
 
         Route::get('/earnings', [
             FarmerController::class,
-            'earnings',
+            'earnings'
         ]);
 
 
         // ====================================================
-        // FARMER ORDERS
+        // ORDERS
         // ====================================================
 
         Route::get('/orders', [
             FarmerOrderController::class,
-            'index',
+            'index'
         ]);
 
         Route::get('/orders/{order}', [
             FarmerOrderController::class,
-            'show',
+            'show'
         ]);
 
         Route::put('/orders/{order}/status', [
             FarmerOrderController::class,
-            'updateStatus',
+            'updateStatus'
         ]);
     });
 });

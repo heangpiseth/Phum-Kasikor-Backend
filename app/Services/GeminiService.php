@@ -45,6 +45,11 @@ class GeminiService
      * Send a message to Gemini.
      *
      * Weather data comes from the farmer's farm location.
+     *
+     * IMPORTANT:
+     * If Gemini is temporarily unavailable, this method throws
+     * an exception after retries so AgricultureAiService can
+     * automatically switch to Groq.
      */
     public function chat(
         string $message,
@@ -141,59 +146,215 @@ class GeminiService
 
         /*
         |--------------------------------------------------------------------------
-        | GEMINI REQUEST
+        | GEMINI REQUEST WITH RETRY
         |--------------------------------------------------------------------------
+        |
+        | Temporary errors:
+        |
+        | 429 = rate limited
+        | 500 = server error
+        | 502 = bad gateway
+        | 503 = temporarily unavailable
+        | 504 = gateway timeout
+        |
         */
 
-        $response = Http::timeout(60)
-            ->withHeaders([
-                'x-goog-api-key' => $this->apiKey,
-                'Content-Type' => 'application/json',
-            ])
-            ->post($url, [
-                'system_instruction' => [
-                    'parts' => [
-                        [
-                            'text' => $systemInstruction,
+        $maxAttempts = 3;
+        $response = null;
+
+        for (
+            $attempt = 1;
+            $attempt <= $maxAttempts;
+            $attempt++
+        ) {
+            try {
+                $response = Http::timeout(60)
+                    ->withHeaders([
+                        'x-goog-api-key' => $this->apiKey,
+                        'Content-Type' => 'application/json',
+                    ])
+                    ->post($url, [
+                        'system_instruction' => [
+                            'parts' => [
+                                [
+                                    'text' => $systemInstruction,
+                                ],
+                            ],
                         ],
-                    ],
-                ],
 
-                'contents' => $contents,
+                        'contents' => $contents,
 
-                'generationConfig' => [
-                    'maxOutputTokens' => 800,
-                ],
-            ]);
+                        'generationConfig' => [
+                            'maxOutputTokens' => 800,
+                        ],
+                    ]);
+            } catch (\Throwable $e) {
+                logger()->warning(
+                    'Gemini request exception',
+                    [
+                        'attempt' => $attempt,
+                        'max_attempts' => $maxAttempts,
+                        'message' => $e->getMessage(),
+                        'model' => $this->model,
+                    ]
+                );
 
-        /*
-        |--------------------------------------------------------------------------
-        | HANDLE GEMINI ERROR
-        |--------------------------------------------------------------------------
-        */
+                /*
+                |--------------------------------------------------------------------------
+                | FINAL REQUEST EXCEPTION
+                |--------------------------------------------------------------------------
+                |
+                | IMPORTANT:
+                | Throw instead of returning a friendly message.
+                |
+                | AgricultureAiService catches this and switches
+                | to Groq.
+                |
+                */
 
-        if (!$response->successful()) {
-            logger()->error(
-                'Gemini API error',
+                if ($attempt === $maxAttempts) {
+                    throw new RuntimeException(
+                        'Gemini request failed after retries: '
+                        . $e->getMessage()
+                    );
+                }
+
+                sleep($attempt);
+
+                continue;
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | SUCCESS
+            |--------------------------------------------------------------------------
+            */
+
+            if ($response->successful()) {
+                break;
+            }
+
+            $status = $response->status();
+
+            logger()->warning(
+                'Gemini temporary API error',
                 [
-                    'status' => $response->status(),
+                    'attempt' => $attempt,
+                    'max_attempts' => $maxAttempts,
+                    'status' => $status,
                     'body' => $response->body(),
                     'model' => $this->model,
                     'url' => $url,
                 ]
             );
 
+            /*
+            |--------------------------------------------------------------------------
+            | RETRYABLE STATUS CODES
+            |--------------------------------------------------------------------------
+            */
+
+            $retryableStatuses = [
+                429,
+                500,
+                502,
+                503,
+                504,
+            ];
+
+            /*
+            |--------------------------------------------------------------------------
+            | NON-RETRYABLE ERROR
+            |--------------------------------------------------------------------------
+            */
+
+            if (
+                !in_array(
+                    $status,
+                    $retryableStatuses,
+                    true
+                )
+            ) {
+                logger()->error(
+                    'Gemini API non-retryable error',
+                    [
+                        'status' => $status,
+                        'body' => $response->body(),
+                        'model' => $this->model,
+                        'url' => $url,
+                    ]
+                );
+
+                throw new RuntimeException(
+                    'Gemini API error: '
+                    . $status
+                    . ' '
+                    . $response->body()
+                );
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | FINAL RETRYABLE FAILURE
+            |--------------------------------------------------------------------------
+            |
+            | IMPORTANT:
+            | Do NOT return a friendly string here.
+            |
+            | Throw the error so AgricultureAiService can
+            | switch to Groq.
+            |
+            */
+
+            if ($attempt === $maxAttempts) {
+                logger()->error(
+                    'Gemini API unavailable after retries',
+                    [
+                        'status' => $status,
+                        'attempts' => $maxAttempts,
+                        'model' => $this->model,
+                    ]
+                );
+
+                throw new RuntimeException(
+                    'Gemini API unavailable after '
+                    . $maxAttempts
+                    . ' attempts. Status: '
+                    . $status
+                );
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | WAIT BEFORE RETRY
+            |--------------------------------------------------------------------------
+            |
+            | Attempt 1 -> wait 1 second
+            | Attempt 2 -> wait 2 seconds
+            |
+            */
+
+            sleep($attempt);
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | FINAL SAFETY CHECK
+        |--------------------------------------------------------------------------
+        */
+
+        if (
+            $response === null ||
+            !$response->successful()
+        ) {
             throw new RuntimeException(
-                'Gemini API error: '
-                . $response->status()
-                . ' '
-                . $response->body()
+                'Gemini request failed after retries.'
             );
         }
 
         /*
         |--------------------------------------------------------------------------
-        | READ RESPONSE
+        | READ GEMINI RESPONSE
         |--------------------------------------------------------------------------
         */
 
@@ -300,8 +461,8 @@ IMPORTANT RULES:
 
 13. If the user speaks Khmer, answer in Khmer.
     If the user speaks English, answer in English.
-    If the user mixes Khmer and English, respond naturally
-    using the same style when possible.
+    If the user mixes Khmer and English, respond naturally using
+    the same style when possible.
 
 14. NEVER invent weather information.
 

@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api\Farmer;
 
 use App\Http\Controllers\Controller;
-use App\Services\GeminiService;
+use App\Services\AgricultureAiService;
 use App\Services\WeatherService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -13,7 +13,7 @@ class AiChatController extends Controller
 {
     public function chat(
         Request $request,
-        GeminiService $gemini,
+        AgricultureAiService $ai,
         WeatherService $weatherService,
     ): JsonResponse {
         $data = $request->validate([
@@ -55,11 +55,16 @@ class AiChatController extends Controller
 
             /*
             |--------------------------------------------------------------------------
-            | SEND MESSAGE + WEATHER TO GEMINI
+            | SEND MESSAGE TO AGRICULTURE AI
             |--------------------------------------------------------------------------
+            |
+            | AgricultureAiService:
+            |
+            | Gemini → retry → Groq → safe fallback
+            |
             */
 
-            $reply = $gemini->chat(
+            $reply = $ai->chat(
                 $data['message'],
                 $data['history'] ?? [],
                 $weather,
@@ -68,7 +73,7 @@ class AiChatController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => $reply,
-                'weather_available' => true,
+                'weather_available' => $weather !== null,
             ]);
 
         } catch (Throwable $e) {

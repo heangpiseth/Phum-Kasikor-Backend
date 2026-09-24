@@ -14,7 +14,7 @@ return [
     |
     */
     'firebase' => [
-    'credentials' => env('FIREBASE_CREDENTIALS', storage_path('app/firebase-credentials.json')),
+        'credentials' => env('FIREBASE_CREDENTIALS', storage_path('app/firebase-credentials.json')),
     ],
     'postmark' => [
         'key' => env('POSTMARK_API_KEY'),
@@ -42,14 +42,30 @@ return [
     ],
 
     'gemini' => [
-    'api_key' => env('GEMINI_API_KEY'),
-    'model' => env('GEMINI_MODEL', 'gemini-3.6-flash'),
-],
+        'api_key' => env('GEMINI_API_KEY'),
+        'model' => env('GEMINI_MODEL', 'gemini-3.6-flash'),
+    ],
 
-'weather' => [
-    'url' => env(
-        'WEATHER_API_URL',
-        'https://api.open-meteo.com/v1/forecast'
+    'weather' => [
+        'url' => env(
+            'WEATHER_API_URL',
+            'https://api.open-meteo.com/v1/forecast'
+        ),
+    ],
+
+    'groq' => [
+        'api_key' => env('GROQ_API_KEY'),
+        'model' => env(
+            'GROQ_MODEL',
+            'openai/gpt-oss-20b'
+        ),
+    ],
+
+    'openrouter' => [
+    'api_key' => env('OPENROUTER_API_KEY'),
+    'model' => env(
+        'OPENROUTER_MODEL',
+        'openrouter/free'
     ),
 ],
 

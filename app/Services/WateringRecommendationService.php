@@ -3,222 +3,367 @@
 namespace App\Services;
 
 use App\Models\Crop;
-use App\Models\Farm;
+use App\Services\WeatherService;
 use Carbon\Carbon;
 
 class WateringRecommendationService
 {
-    public function getRecommendation(
-        int $userId
-    ): array {
-        $farm = Farm::query()
-            ->where('user_id', $userId)
-            ->first();
+    public function __construct(
+        protected WeatherService $weatherService
+    ) {}
+
+    public function getRecommendation(Crop $crop): array
+    {
+        $farm = $crop->farm;
 
         if (!$farm) {
+            throw new \RuntimeException('Crop is not attached to a farm.');
+        }
+
+        $latitude = $farm->latitude;
+        $longitude = $farm->longitude;
+
+        if (!$latitude || !$longitude) {
             throw new \RuntimeException(
-                'You do not have a farm yet.'
+                'Farm location is required for weather-based watering recommendations.'
             );
         }
 
-        if (
-            $farm->latitude === null ||
-            $farm->longitude === null
-        ) {
-            throw new \RuntimeException(
-                'Your farm does not have a valid location.'
-            );
-        }
+        /*
+        |--------------------------------------------------------------------------
+        | REAL WEATHER
+        |--------------------------------------------------------------------------
+        */
 
-        $weatherService = app(WeatherService::class);
-
-        $weatherData = $weatherService->getFarmWeather(
-            $userId
+        $weather = $this->weatherService->getForecast(
+            (float) $latitude,
+            (float) $longitude
         );
 
-        $weather = $weatherData['weather'] ?? [];
+        /*
+        |--------------------------------------------------------------------------
+        | CROP INFORMATION
+        |--------------------------------------------------------------------------
+        */
 
-        $current = $weather['current'] ?? [];
-        $daily = $weather['daily'] ?? [];
+        $plantingDate = $crop->planting_date
+            ? Carbon::parse($crop->planting_date)
+            : null;
 
-        $todayRainProbability =
-            $daily['precipitation_probability_max'][0]
-            ?? 0;
+        $daysAfterPlanting = $plantingDate
+            ? $plantingDate->diffInDays(now())
+            : null;
 
-        $todayRain =
-            $daily['rain_sum'][0]
-            ?? $daily['precipitation_sum'][0]
-            ?? 0;
+        $growthStage = $this->getGrowthStage(
+            $crop,
+            $daysAfterPlanting
+        );
 
-        $temperature =
-            $current['temperature_2m']
-            ?? null;
+        /*
+        |--------------------------------------------------------------------------
+        | WEATHER VALUES
+        |--------------------------------------------------------------------------
+        */
 
-        $crops = Crop::query()
-            ->where('farm_id', $farm->id)
-            ->with([
-                'field',
-                'wateringLogs' => function ($query) {
-                    $query
-                        ->latest('watering_date')
-                        ->latest('id');
-                },
-            ])
-            ->get();
+        $temperature = (float) ($weather['temperature'] ?? 0);
+        $rainfall = (float) ($weather['rainfall_mm'] ?? 0);
+        $rainProbability = (float) ($weather['rain_probability'] ?? 0);
 
-        $recommendations = [];
+        /*
+        |--------------------------------------------------------------------------
+        | WATERING DECISION
+        |--------------------------------------------------------------------------
+        */
 
-        foreach ($crops as $crop) {
-            $lastWatering = $crop
-                ->wateringLogs
-                ->first();
+        $watering = $this->calculateWatering(
+            $temperature,
+            $rainfall,
+            $rainProbability,
+            $growthStage
+        );
 
-            $daysSinceWatering = null;
+        /*
+        |--------------------------------------------------------------------------
+        | HARVEST RELATIONSHIP
+        |--------------------------------------------------------------------------
+        */
 
-            if ($lastWatering) {
-                $daysSinceWatering = Carbon::parse(
-                    $lastWatering->watering_date
-                )->diffInDays(
-                    Carbon::today()
-                );
-            }
-
-            $recommendation =
-                $this->calculateRecommendation(
-                    $daysSinceWatering,
-                    $todayRainProbability,
-                    $todayRain,
-                    $crop->growth_stage
-                );
-
-            $recommendations[] = [
-                'crop' => $crop,
-                'last_watering_date' =>
-                    $lastWatering?->watering_date,
-                'days_since_watering' =>
-                    $daysSinceWatering,
-                'weather' => [
-                    'rain_probability' =>
-                        $todayRainProbability,
-                    'rain_amount_mm' =>
-                        $todayRain,
-                    'temperature_c' =>
-                        $temperature,
-                ],
-                'recommendation' =>
-                    $recommendation,
-            ];
-        }
+        $harvest = $this->calculateHarvest(
+            $crop,
+            $plantingDate,
+            $daysAfterPlanting,
+            $growthStage
+        );
 
         return [
-            'farm' => [
-                'id' => $farm->id,
-                'name' => $farm->farm_name,
-                'latitude' => $farm->latitude,
-                'longitude' => $farm->longitude,
+            'crop' => [
+                'id' => $crop->id,
+                'name' => $crop->name,
+                'growth_stage' => $growthStage,
+                'planting_date' => $plantingDate?->toDateString(),
+                'days_after_planting' => $daysAfterPlanting,
             ],
-            'recommendations' => $recommendations,
+
+            'weather' => [
+                'temperature' => $temperature,
+                'rainfall_mm' => $rainfall,
+                'rain_probability' => $rainProbability,
+            ],
+
+            'watering' => $watering,
+
+            'harvest' => $harvest,
         ];
     }
 
-    private function calculateRecommendation(
-        ?int $daysSinceWatering,
-        float|int $rainProbability,
-        float|int $rainAmount,
-        ?string $growthStage
+    /*
+    |--------------------------------------------------------------------------
+    | GROWTH STAGE
+    |--------------------------------------------------------------------------
+    */
+
+    private function getGrowthStage(
+        Crop $crop,
+        ?int $daysAfterPlanting
+    ): string {
+        /*
+         * If your crop table already has a growth_stage column,
+         * use it first.
+         */
+        if (!empty($crop->growth_stage)) {
+            return strtolower($crop->growth_stage);
+        }
+
+        if ($daysAfterPlanting === null) {
+            return 'unknown';
+        }
+
+        if ($daysAfterPlanting <= 14) {
+            return 'seedling';
+        }
+
+        if ($daysAfterPlanting <= 35) {
+            return 'vegetative';
+        }
+
+        if ($daysAfterPlanting <= 60) {
+            return 'flowering';
+        }
+
+        if ($daysAfterPlanting <= 90) {
+            return 'fruiting';
+        }
+
+        return 'mature';
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | WATERING
+    |--------------------------------------------------------------------------
+    */
+
+    private function calculateWatering(
+        float $temperature,
+        float $rainfall,
+        float $rainProbability,
+        string $growthStage
     ): array {
-        // --------------------------------------------------------
-        // Rain is expected
-        // --------------------------------------------------------
-
-        if (
-            $rainProbability >= 60 &&
-            $rainAmount >= 1
-        ) {
+        /*
+         * Rain already received.
+         */
+        if ($rainfall >= 10) {
             return [
-                'status' => 'skip',
-                'title' => 'Rain expected',
-                'message' =>
-                    'Rain is expected today, so additional watering may not be necessary.',
+                'required' => false,
+                'recommended_amount_mm' => 0,
+                'timing' => 'Wait',
+                'reason' => 'Recent rainfall is sufficient. Additional watering is not recommended now.',
             ];
         }
 
-        // --------------------------------------------------------
-        // Already watered today
-        // --------------------------------------------------------
-
-        if (
-            $daysSinceWatering !== null &&
-            $daysSinceWatering === 0
-        ) {
+        /*
+         * Significant rain is expected.
+         */
+        if ($rainProbability >= 70) {
             return [
-                'status' => 'done',
-                'title' => 'Already watered',
-                'message' =>
-                    'This crop has already been watered today.',
+                'required' => false,
+                'recommended_amount_mm' => 0,
+                'timing' => 'Wait for rain',
+                'reason' => 'High probability of rain. Avoid unnecessary irrigation.',
             ];
         }
 
-        // --------------------------------------------------------
-        // No watering history
-        // --------------------------------------------------------
+        /*
+         * Base watering amount by crop stage.
+         */
+        $amount = match ($growthStage) {
+            'seedling' => 4,
+            'vegetative' => 7,
+            'flowering' => 10,
+            'fruiting' => 12,
+            'mature' => 8,
+            default => 7,
+        };
 
-        if ($daysSinceWatering === null) {
-            return [
-                'status' => 'check',
-                'title' => 'Watering history needed',
-                'message' =>
-                    'No watering record was found. Check the crop and field before watering.',
-            ];
+        /*
+         * Hot weather increases water demand.
+         */
+        if ($temperature >= 35) {
+            $amount += 5;
+        } elseif ($temperature >= 32) {
+            $amount += 3;
         }
 
-        // --------------------------------------------------------
-        // More than 2 days
-        // --------------------------------------------------------
-
-        if ($daysSinceWatering >= 3) {
-            return [
-                'status' => 'recommended',
-                'title' => 'Watering recommended',
-                'message' =>
-                    'This crop has not been watered for several days and significant rain is not expected.',
-            ];
+        /*
+         * Moderate rain reduces watering.
+         */
+        if ($rainfall > 0) {
+            $amount = max(0, $amount - (int) round($rainfall));
         }
 
-        // --------------------------------------------------------
-        // Growth stage consideration
-        // --------------------------------------------------------
-
-        if (
-            $growthStage !== null &&
-            in_array(
-                strtolower($growthStage),
-                [
-                    'flowering',
-                    'fruiting',
-                    'reproductive',
-                ],
-                true
-            ) &&
-            $daysSinceWatering >= 2
-        ) {
+        if ($amount <= 0) {
             return [
-                'status' => 'recommended',
-                'title' => 'Watering recommended',
-                'message' =>
-                    'The crop is in an active growth stage and has not been watered recently.',
+                'required' => false,
+                'recommended_amount_mm' => 0,
+                'timing' => 'Wait',
+                'reason' => 'Recent rainfall has reduced the crop water requirement.',
             ];
         }
-
-        // --------------------------------------------------------
-        // Normal condition
-        // --------------------------------------------------------
 
         return [
-            'status' => 'monitor',
-            'title' => 'Monitor crop',
-            'message' =>
-                'Recent watering was recorded. Monitor the crop and field conditions before watering again.',
+            'required' => true,
+            'recommended_amount_mm' => $amount,
+            'timing' => $temperature >= 32
+                ? 'Early morning or late afternoon'
+                : 'Early morning',
+            'reason' => $this->wateringReason(
+                $temperature,
+                $rainfall,
+                $rainProbability,
+                $growthStage
+            ),
         ];
     }
+
+    private function wateringReason(
+        float $temperature,
+        float $rainfall,
+        float $rainProbability,
+        string $growthStage
+    ): string {
+        if ($temperature >= 35) {
+            return "Hot weather and the {$growthStage} growth stage increase the crop's water demand.";
+        }
+
+        if ($temperature >= 32) {
+            return "Warm weather combined with the {$growthStage} growth stage requires additional moisture.";
+        }
+
+        if ($rainfall > 0) {
+            return "Some rainfall has occurred, so watering has been reduced.";
+        }
+
+        return "The crop is in the {$growthStage} stage and current weather conditions indicate that watering is needed.";
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | HARVEST
+    |--------------------------------------------------------------------------
+    */
+
+    private function calculateHarvest(
+    Crop $crop,
+    ?Carbon $plantingDate,
+    ?int $daysAfterPlanting,
+    string $growthStage,
+): array {
+    /*
+     * If the crop already has an expected harvest date,
+     * use the farmer's actual crop data first.
+     */
+    if ($crop->expected_harvest_date) {
+        $estimatedDate = Carbon::parse(
+            $crop->expected_harvest_date
+        );
+
+        $daysRemaining = max(
+            0,
+            now()->startOfDay()->diffInDays(
+                $estimatedDate->copy()->startOfDay(),
+                false
+            )
+        );
+
+        return [
+            'available' => true,
+            'estimated_date' => $estimatedDate->toDateString(),
+            'days_remaining' => $daysRemaining,
+            'growth_stage' => $growthStage,
+            'harvest_days' => $plantingDate
+                ? $plantingDate->diffInDays(
+                    $estimatedDate
+                )
+                : null,
+            'source' => 'crop_expected_harvest_date',
+        ];
+    }
+
+    /*
+     * Without planting date we cannot calculate
+     * a reliable harvest estimate.
+     */
+    if (
+        !$plantingDate ||
+        $daysAfterPlanting === null
+    ) {
+        return [
+            'available' => false,
+            'estimated_date' => null,
+            'days_remaining' => null,
+            'growth_stage' => $growthStage,
+            'harvest_days' => null,
+            'source' => 'insufficient_crop_data',
+        ];
+    }
+
+    /*
+     * Use harvest_days when available.
+     */
+    $harvestDays = $crop->harvest_days;
+
+    /*
+     * Fallback based on growth stage.
+     */
+    if ($harvestDays === null) {
+        $harvestDays = match ($growthStage) {
+            'seedling' => 90,
+            'vegetative' => 70,
+            'flowering' => 45,
+            'fruiting' => 25,
+            'mature' => 0,
+            default => 60,
+        };
+    }
+
+    $harvestDays = (int) $harvestDays;
+
+    $daysRemaining = max(
+        0,
+        $harvestDays - $daysAfterPlanting
+    );
+
+    $estimatedDate = $plantingDate
+        ->copy()
+        ->addDays($harvestDays);
+
+    return [
+        'available' => true,
+        'estimated_date' => $estimatedDate->toDateString(),
+        'days_remaining' => $daysRemaining,
+        'growth_stage' => $growthStage,
+        'harvest_days' => $harvestDays,
+        'source' => 'calculated_from_planting_date',
+    ];
+}
 }

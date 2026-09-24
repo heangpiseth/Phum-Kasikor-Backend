@@ -12,12 +12,16 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
 class FarmerController extends Controller
 {
     // ============================================================
-    // FARMS
+    // FARM
     // ============================================================
 
     public function index(Request $request)
     {
-        return $request->user()->farms;
+        return response()->json(
+            $request->user()
+                ->farms()
+                ->get()
+        );
     }
 
     public function store(Request $request)
@@ -33,7 +37,9 @@ class FarmerController extends Controller
             'cover_image' => ['nullable', 'string'],
         ]);
 
-        $farm = $request->user()->farms()->create($data);
+        $farm = $request->user()
+            ->farms()
+            ->create($data);
 
         return response()->json($farm, 201);
     }
@@ -42,7 +48,7 @@ class FarmerController extends Controller
     {
         $this->authorizeFarm($request, $farm);
 
-        return $farm;
+        return response()->json($farm);
     }
 
     public function update(Request $request, Farm $farm)
@@ -62,7 +68,9 @@ class FarmerController extends Controller
 
         $farm->update($data);
 
-        return $farm;
+        return response()->json(
+            $farm->fresh()
+        );
     }
 
     public function destroy(Request $request, Farm $farm)
@@ -71,20 +79,24 @@ class FarmerController extends Controller
 
         $farm->delete();
 
-        return response()->json(null, 204);
+        return response()->json([
+            'success' => true,
+            'message' => 'Farm deleted successfully.',
+        ]);
     }
 
     private function authorizeFarm(
         Request $request,
         Farm $farm
     ): void {
-        if ($farm->user_id !== $request->user()->id) {
+        if ((string) $farm->user_id !== (string) $request->user()->id) {
             throw new HttpException(
                 403,
                 'This farm does not belong to you.'
             );
         }
     }
+
 
     // ============================================================
     // FIELDS
@@ -96,7 +108,9 @@ class FarmerController extends Controller
     ) {
         $this->authorizeFarm($request, $farm);
 
-        return $farm->fields;
+        return response()->json(
+            $farm->fields()->get()
+        );
     }
 
     public function storeField(
@@ -114,7 +128,21 @@ class FarmerController extends Controller
 
         $field = $farm->fields()->create($data);
 
-        return response()->json($field, 201);
+        return response()->json(
+            $field,
+            201
+        );
+    }
+
+    public function showField(
+        Request $request,
+        Farm $farm,
+        FieldModel $field
+    ) {
+        $this->authorizeFarm($request, $farm);
+        $this->authorizeField($farm, $field);
+
+        return response()->json($field);
     }
 
     public function updateField(
@@ -134,7 +162,9 @@ class FarmerController extends Controller
 
         $field->update($data);
 
-        return $field;
+        return response()->json(
+            $field->fresh()
+        );
     }
 
     public function destroyField(
@@ -147,20 +177,24 @@ class FarmerController extends Controller
 
         $field->delete();
 
-        return response()->json(null, 204);
+        return response()->json([
+            'success' => true,
+            'message' => 'Field deleted successfully.',
+        ]);
     }
 
     private function authorizeField(
         Farm $farm,
         FieldModel $field
     ): void {
-        if ($field->farm_id !== $farm->id) {
+        if ((string) $field->farm_id !== (string) $farm->id) {
             throw new HttpException(
                 404,
                 'Field not found on this farm.'
             );
         }
     }
+
 
     // ============================================================
     // CROPS
@@ -172,9 +206,11 @@ class FarmerController extends Controller
     ) {
         $this->authorizeFarm($request, $farm);
 
-        return $farm->crops()
-            ->with('field')
-            ->get();
+        return response()->json(
+            $farm->crops()
+                ->with('field')
+                ->get()
+        );
     }
 
     public function storeCrop(
@@ -188,37 +224,30 @@ class FarmerController extends Controller
                 'nullable',
                 'exists:fields,id',
             ],
-
             'name' => [
                 'required',
                 'string',
             ],
-
             'variety' => [
                 'nullable',
                 'string',
             ],
-
             'planting_date' => [
                 'nullable',
                 'date',
             ],
-
             'expected_harvest_date' => [
                 'nullable',
                 'date',
             ],
-
             'quantity_planted' => [
                 'nullable',
                 'numeric',
             ],
-
             'growth_stage' => [
                 'nullable',
                 'string',
             ],
-
             'image' => [
                 'nullable',
                 'string',
@@ -230,6 +259,13 @@ class FarmerController extends Controller
                 $data['field_id']
             );
 
+            if (!$field) {
+                throw new HttpException(
+                    422,
+                    'Field not found.'
+                );
+            }
+
             $this->authorizeField(
                 $farm,
                 $field
@@ -239,8 +275,21 @@ class FarmerController extends Controller
         $crop = $farm->crops()->create($data);
 
         return response()->json(
-            $crop,
+            $crop->load('field'),
             201
+        );
+    }
+
+    public function showCrop(
+        Request $request,
+        Farm $farm,
+        Crop $crop
+    ) {
+        $this->authorizeFarm($request, $farm);
+        $this->authorizeCrop($farm, $crop);
+
+        return response()->json(
+            $crop->load('field')
         );
     }
 
@@ -257,37 +306,30 @@ class FarmerController extends Controller
                 'nullable',
                 'exists:fields,id',
             ],
-
             'name' => [
                 'required',
                 'string',
             ],
-
             'variety' => [
                 'nullable',
                 'string',
             ],
-
             'planting_date' => [
                 'nullable',
                 'date',
             ],
-
             'expected_harvest_date' => [
                 'nullable',
                 'date',
             ],
-
             'quantity_planted' => [
                 'nullable',
                 'numeric',
             ],
-
             'growth_stage' => [
                 'nullable',
                 'string',
             ],
-
             'image' => [
                 'nullable',
                 'string',
@@ -299,6 +341,13 @@ class FarmerController extends Controller
                 $data['field_id']
             );
 
+            if (!$field) {
+                throw new HttpException(
+                    422,
+                    'Field not found.'
+                );
+            }
+
             $this->authorizeField(
                 $farm,
                 $field
@@ -307,7 +356,9 @@ class FarmerController extends Controller
 
         $crop->update($data);
 
-        return $crop;
+        return response()->json(
+            $crop->fresh()->load('field')
+        );
     }
 
     public function destroyCrop(
@@ -320,20 +371,24 @@ class FarmerController extends Controller
 
         $crop->delete();
 
-        return response()->json(null, 204);
+        return response()->json([
+            'success' => true,
+            'message' => 'Crop deleted successfully.',
+        ]);
     }
 
     private function authorizeCrop(
         Farm $farm,
         Crop $crop
     ): void {
-        if ($crop->farm_id !== $farm->id) {
+        if ((string) $crop->farm_id !== (string) $farm->id) {
             throw new HttpException(
                 404,
                 'Crop not found on this farm.'
             );
         }
     }
+
 
     // ============================================================
     // WATERING LOGS
@@ -367,10 +422,6 @@ class FarmerController extends Controller
         ]);
     }
 
-    // ============================================================
-    // CREATE WATERING LOG
-    // ============================================================
-
     public function storeWateringLog(
         Request $request
     ) {
@@ -390,32 +441,24 @@ class FarmerController extends Controller
                 'required',
                 'exists:crops,id',
             ],
-
             'field_id' => [
                 'nullable',
                 'exists:fields,id',
             ],
-
             'watering_date' => [
                 'required',
                 'date',
             ],
-
             'water_amount' => [
                 'nullable',
                 'numeric',
                 'min:0',
             ],
-
             'notes' => [
                 'nullable',
                 'string',
             ],
         ]);
-
-        // --------------------------------------------------------
-        // Make sure crop belongs to this farmer's farm
-        // --------------------------------------------------------
 
         $crop = Crop::query()
             ->where(
@@ -436,16 +479,8 @@ class FarmerController extends Controller
             ], 422);
         }
 
-        // --------------------------------------------------------
-        // Use crop field automatically when field is not provided
-        // --------------------------------------------------------
-
         $fieldId = $data['field_id']
             ?? $crop->field_id;
-
-        // --------------------------------------------------------
-        // Make sure field belongs to this farm
-        // --------------------------------------------------------
 
         if ($fieldId) {
             $field = FieldModel::find($fieldId);
@@ -463,10 +498,6 @@ class FarmerController extends Controller
             );
         }
 
-        // --------------------------------------------------------
-        // Create watering log
-        // --------------------------------------------------------
-
         $log = $crop->wateringLogs()->create([
             'farm_id' => $farm->id,
             'field_id' => $fieldId,
@@ -482,16 +513,13 @@ class FarmerController extends Controller
             'success' => true,
             'message' =>
                 'Watering log created successfully.',
-            'data' => $log->load([
-                'crop',
-                'field',
-            ]),
+            'data' =>
+                $log->load([
+                    'crop',
+                    'field',
+                ]),
         ], 201);
     }
-
-    // ============================================================
-    // SHOW WATERING LOG
-    // ============================================================
 
     public function showWateringLog(
         Request $request,
@@ -521,10 +549,6 @@ class FarmerController extends Controller
         ]);
     }
 
-    // ============================================================
-    // UPDATE WATERING LOG
-    // ============================================================
-
     public function updateWateringLog(
         Request $request,
         $wateringLog
@@ -548,32 +572,24 @@ class FarmerController extends Controller
                 'sometimes',
                 'exists:crops,id',
             ],
-
             'field_id' => [
                 'nullable',
                 'exists:fields,id',
             ],
-
             'watering_date' => [
                 'sometimes',
                 'date',
             ],
-
             'water_amount' => [
                 'nullable',
                 'numeric',
                 'min:0',
             ],
-
             'notes' => [
                 'nullable',
                 'string',
             ],
         ]);
-
-        // --------------------------------------------------------
-        // Validate crop if it is being changed
-        // --------------------------------------------------------
 
         if (isset($data['crop_id'])) {
             $crop = Crop::query()
@@ -595,10 +611,6 @@ class FarmerController extends Controller
                 ], 422);
             }
         }
-
-        // --------------------------------------------------------
-        // Validate field
-        // --------------------------------------------------------
 
         if (
             array_key_exists(
@@ -630,16 +642,13 @@ class FarmerController extends Controller
             'success' => true,
             'message' =>
                 'Watering log updated successfully.',
-            'data' => $log->fresh()->load([
-                'crop',
-                'field',
-            ]),
+            'data' =>
+                $log->fresh()->load([
+                    'crop',
+                    'field',
+                ]),
         ]);
     }
-
-    // ============================================================
-    // DELETE WATERING LOG
-    // ============================================================
 
     public function destroyWateringLog(
         Request $request,
@@ -665,6 +674,30 @@ class FarmerController extends Controller
             'success' => true,
             'message' =>
                 'Watering log deleted successfully.',
+        ]);
+    }
+
+
+    // ============================================================
+    // EARNINGS
+    // ============================================================
+
+    public function earnings(Request $request)
+    {
+        $farm = $request->user()
+            ->farms()
+            ->first();
+
+        if (!$farm) {
+            return response()->json([
+                'success' => true,
+                'earnings' => 0,
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'earnings' => 0,
         ]);
     }
 }

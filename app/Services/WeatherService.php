@@ -9,7 +9,7 @@ use RuntimeException;
 class WeatherService
 {
     /**
-     * Get the full weather data for the farmer's farm.
+     * Get weather for the authenticated farmer's farm.
      */
     public function getFarmWeather(int $userId): array
     {
@@ -17,173 +17,184 @@ class WeatherService
 
         if (!$farm) {
             throw new RuntimeException(
-                'No farm was found for this farmer.'
+                'You do not have a farm yet.'
             );
         }
 
-        if ($farm->latitude === null || $farm->longitude === null) {
+        if (
+            $farm->latitude === null ||
+            $farm->longitude === null
+        ) {
             throw new RuntimeException(
-                'Farm location has not been set yet.'
+                'Farm location is required for weather information.'
             );
         }
 
-        $latitude = (float) $farm->latitude;
-        $longitude = (float) $farm->longitude;
+        $weather = $this->getForecast(
+            (float) $farm->latitude,
+            (float) $farm->longitude
+        );
 
-        $url = config('services.weather.url');
+        return [
+            'farm' => [
+                'id' => $farm->id,
+                'name' => $farm->name,
+                'latitude' => (float) $farm->latitude,
+                'longitude' => (float) $farm->longitude,
+            ],
+            'weather' => $weather,
+        ];
+    }
 
-        $response = Http::timeout(15)->get($url, [
-            'latitude' => $latitude,
-            'longitude' => $longitude,
+    /**
+     * Get real weather data from Open-Meteo.
+     *
+     * This is also used by:
+     * Weather -> Crop -> Watering -> Harvest
+     * 
+     * 
+     */
 
-            'current' => implode(',', [
-                'temperature_2m',
-                'relative_humidity_2m',
-                'precipitation',
-                'rain',
-                'weather_code',
-                'wind_speed_10m',
-                'is_day',
-            ]),
+     public function getFarmWeatherForAi(int $userId): array
+    {
+        return $this->getFarmWeather($userId);
+    }
 
-            'hourly' => implode(',', [
-                'temperature_2m',
-                'rain',
-                'precipitation',
-                'precipitation_probability',
-                'wind_speed_10m',
-                'soil_temperature_0cm',
-                'soil_moisture_0_to_1cm',
-                'soil_moisture_1_to_3cm',
-                'soil_moisture_3_to_9cm',
-                'soil_moisture_9_to_27cm',
-                'is_day',
-            ]),
+    
+    public function getForecast(
+        float $latitude,
+        float $longitude
+    ): array {
+        $response = Http::timeout(15)
+            ->get('https://api.open-meteo.com/v1/forecast', [
+                'latitude' => $latitude,
+                'longitude' => $longitude,
 
-            'daily' => implode(',', [
-                'weather_code',
-                'temperature_2m_max',
-                'temperature_2m_min',
-                'precipitation_sum',
-                'rain_sum',
-                'precipitation_probability_max',
-                'wind_speed_10m_max',
-            ]),
+                'current' => implode(',', [
+                    'temperature_2m',
+                    'relative_humidity_2m',
+                    'precipitation',
+                    'rain',
+                    'weather_code',
+                ]),
 
-            'timezone' => 'auto',
-            'forecast_days' => 7,
-        ]);
+                'hourly' => implode(',', [
+                    'temperature_2m',
+                    'precipitation_probability',
+                    'precipitation',
+                    'rain',
+                ]),
 
-        if ($response->failed()) {
+                'daily' => implode(',', [
+                    'temperature_2m_max',
+                    'temperature_2m_min',
+                    'precipitation_sum',
+                    'rain_sum',
+                    'precipitation_probability_max',
+                ]),
+
+                'timezone' => 'auto',
+
+                'forecast_days' => 7,
+            ]);
+
+        if (!$response->successful()) {
             throw new RuntimeException(
                 'Unable to retrieve weather data.'
             );
         }
 
+        $data = $response->json();
+
+        $current = $data['current'] ?? [];
+        $hourly = $data['hourly'] ?? [];
+        $daily = $data['daily'] ?? [];
+
+        /*
+         * Current temperature.
+         */
+        $temperature = (float) (
+            $current['temperature_2m'] ?? 0
+        );
+
+        /*
+         * Current precipitation.
+         */
+        $rainfall = (float) (
+            $current['rain'] ??
+            $current['precipitation'] ??
+            0
+        );
+
+        /*
+         * Find the current hourly rain probability.
+         */
+        $rainProbability = 0;
+
+        if (
+            isset($hourly['precipitation_probability']) &&
+            is_array($hourly['precipitation_probability']) &&
+            count($hourly['precipitation_probability']) > 0
+        ) {
+            $rainProbability = (float)
+                ($hourly['precipitation_probability'][0] ?? 0);
+        }
+
         return [
-            'farm' => [
-                'id' => $farm->id,
-                'name' => $farm->farm_name,
-                'location' => $farm->location,
+            /*
+             * These simplified values are consumed by
+             * WateringRecommendationService.
+             */
+            'temperature' => $temperature,
+
+            'rainfall_mm' => $rainfall,
+
+            'rain_probability' => $rainProbability,
+
+            /*
+             * Keep the real Open-Meteo data available
+             * for the normal weather screen.
+             */
+            'location' => [
                 'latitude' => $latitude,
                 'longitude' => $longitude,
+                'timezone' => $data['timezone'] ?? null,
             ],
-
-            'weather' => $response->json(),
-        ];
-    }
-
-    /**
-     * Get a compact weather summary for the AI assistant.
-     */
-    public function getFarmWeatherForAi(int $userId): array
-    {
-        $data = $this->getFarmWeather($userId);
-
-        $weather = $data['weather'];
-
-        return [
-            'farm' => $data['farm'],
 
             'current' => [
-                'time' => data_get(
-                    $weather,
-                    'current.time'
+                'temperature' => $temperature,
+                'humidity' => (float) (
+                    $current['relative_humidity_2m'] ?? 0
                 ),
-
-                'temperature_c' => data_get(
-                    $weather,
-                    'current.temperature_2m'
-                ),
-
-                'humidity_percent' => data_get(
-                    $weather,
-                    'current.relative_humidity_2m'
-                ),
-
-                'rain_mm' => data_get(
-                    $weather,
-                    'current.rain'
-                ),
-
-                'precipitation_mm' => data_get(
-                    $weather,
-                    'current.precipitation'
-                ),
-
-                'wind_kmh' => data_get(
-                    $weather,
-                    'current.wind_speed_10m'
-                ),
-
-                'weather_code' => data_get(
-                    $weather,
-                    'current.weather_code'
-                ),
+                'rainfall_mm' => $rainfall,
+                'rain_probability' => $rainProbability,
+                'weather_code' => $current['weather_code'] ?? null,
             ],
 
-            'forecast' => [
-                'time' => data_get(
-                    $weather,
-                    'daily.time',
-                    []
-                ),
+            'daily' => [
+                'time' => $daily['time'] ?? [],
+                'temperature_max' =>
+                    $daily['temperature_2m_max'] ?? [],
+                'temperature_min' =>
+                    $daily['temperature_2m_min'] ?? [],
+                'precipitation_sum' =>
+                    $daily['precipitation_sum'] ?? [],
+                'rain_sum' =>
+                    $daily['rain_sum'] ?? [],
+                'rain_probability' =>
+                    $daily['precipitation_probability_max'] ?? [],
+            ],
 
-                'temperature_max_c' => data_get(
-                    $weather,
-                    'daily.temperature_2m_max',
-                    []
-                ),
-
-                'temperature_min_c' => data_get(
-                    $weather,
-                    'daily.temperature_2m_min',
-                    []
-                ),
-
-                'rain_mm' => data_get(
-                    $weather,
-                    'daily.rain_sum',
-                    []
-                ),
-
-                'precipitation_mm' => data_get(
-                    $weather,
-                    'daily.precipitation_sum',
-                    []
-                ),
-
-                'rain_probability_percent' => data_get(
-                    $weather,
-                    'daily.precipitation_probability_max',
-                    []
-                ),
-
-                'wind_max_kmh' => data_get(
-                    $weather,
-                    'daily.wind_speed_10m_max',
-                    []
-                ),
+            'hourly' => [
+                'time' => $hourly['time'] ?? [],
+                'temperature' =>
+                    $hourly['temperature_2m'] ?? [],
+                'rain_probability' =>
+                    $hourly['precipitation_probability'] ?? [],
+                'precipitation' =>
+                    $hourly['precipitation'] ?? [],
+                'rain' =>
+                    $hourly['rain'] ?? [],
             ],
         ];
     }
