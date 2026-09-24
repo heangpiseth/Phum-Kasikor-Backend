@@ -18,7 +18,7 @@ class GeminiService
 
         $this->model = (string) config(
             'services.gemini.model',
-            'gemini-3.6-flash'
+            'gemini-2.5-flash'
         );
 
         // Prevent accidental "models/models/..."

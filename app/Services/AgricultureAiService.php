@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Log;
 class AgricultureAiService
 {
     public function __construct(
-        private OpenRouterService $openRouter
+        private GeminiService $gemini
     ) {
     }
 
@@ -17,20 +17,20 @@ class AgricultureAiService
         ?array $weather = null
     ): string {
         try {
-            $answer = $this->openRouter->chat(
+            $answer = $this->gemini->chat(
                 $message,
                 $history,
                 $weather
             );
 
             Log::info(
-                'Agriculture AI answered with OpenRouter.'
+                'Agriculture AI answered with Gemini.'
             );
 
             return $answer;
         } catch (\Throwable $e) {
             Log::error(
-                'OpenRouter Agriculture AI failed.',
+                'Gemini Agriculture AI failed.',
                 [
                     'message' => $e->getMessage(),
                 ]
