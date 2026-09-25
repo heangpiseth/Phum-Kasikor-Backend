@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f8f4">
+  <title>Admin sign in | Phum Kasikor</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body class="login-body">
+  <main class="login-layout">
+    <section class="login-story" aria-label="Platform overview">
+      <a class="brand brand-light" href="login.html"><span class="brand-mark">PK</span><span><strong>Phum Kasikor</strong><small>ADMINISTRATION</small></span></a>
+      <div class="story-copy">
+        <span class="eyebrow">GROWING TOGETHER</span>
+        <h1>Good operations help every harvest go further.</h1>
+        <p>Review marketplace activity and farmer applications through one secure workspace.</p>
+      </div>
+      <div class="story-bottom"><span class="story-leaf">✳</span><span>Marketplace operations<br>Built for Cambodia</span></div>
+    </section>
+    <section class="login-panel">
+      <div class="login-card">
+        <div class="login-heading"><span class="eyebrow">ADMIN WORKSPACE</span><h2>Welcome back</h2><p>Sign in with your administrator account.</p></div>
+        <form id="login-form" class="form-stack">
+          <label for="identifier">Email or phone</label>
+          <input id="identifier" name="identifier" type="text" autocomplete="username" required placeholder="you@example.com">
+          <label for="password">Password</label>
+          <div class="password-wrap"><input id="password" name="password" type="password" autocomplete="current-password" required placeholder="Enter your password"><button type="button" id="toggle-password" class="password-toggle" aria-label="Show password">Show</button></div>
+          <div class="form-alert" id="login-error" role="alert" hidden></div>
+          <button class="button button-primary button-wide" type="submit" id="login-submit"><span>Sign in</span><span aria-hidden="true">→</span></button>
+        </form>
+        <p class="login-security"><span>▣</span> Your session is authenticated by the Phum Kasikor API.</p>
+      </div>
+      <div class="login-foot">Need access? Contact your platform administrator.</div>
+    </section>
+  </main>
+  <script src="assets/js/config.js"></script>
+  <script src="assets/js/api.js"></script>
+  <script src="assets/js/auth.js"></script>
+  <script src="assets/js/login.js"></script>
+</body>
+</html>
