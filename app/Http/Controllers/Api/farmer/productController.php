@@ -67,7 +67,8 @@ class ProductController extends Controller
             'quantity_available' => $validated['quantity_available'],
             'harvest_date' => $validated['harvest_date'] ?? null,
             'farming_method' => $validated['farming_method'] ?? null,
-            'is_active' => true,
+            'is_active' => false,
+            'approval_status' => 'pending',
         ]);
 
         return response()->json([
@@ -98,10 +99,15 @@ class ProductController extends Controller
             'quantity_available' => ['sometimes', 'numeric', 'min:0'],
             'harvest_date' => ['nullable', 'date'],
             'farming_method' => ['nullable', 'string', 'max:100'],
-            'is_active' => ['sometimes', 'boolean'],
         ]);
 
-        $product->update($data);
+        $product->update(array_merge($data, [
+            'is_active' => false,
+            'approval_status' => 'pending',
+            'rejection_reason' => null,
+            'approved_by' => null,
+            'approved_at' => null,
+        ]));
 
         return $product;
     }
@@ -118,38 +124,38 @@ class ProductController extends Controller
     // ---- Product images ----
 
     public function storeImage(Request $request, $farm, $product)
-{
-    $request->validate([
-        'image' => 'required|image|mimes:jpg,jpeg,png,webp|max:5120',
-    ]);
+    {
+        $request->validate([
+            'image' => 'required|image|mimes:jpg,jpeg,png,webp|max:5120',
+        ]);
 
-    $productModel = Product::with('farm')->findOrFail($product);
+        $productModel = Product::with('farm')->findOrFail($product);
 
-    // Make sure the product belongs to the farm in the URL
-    if ((int) $productModel->farm_id !== (int) $farm) {
-        return response()->json([
-            'message' => 'Product does not belong to this farm.',
-        ], 422);
+        // Make sure the product belongs to the farm in the URL
+        if ((int) $productModel->farm_id !== (int) $farm) {
+            return response()->json([
+                'message' => 'Product does not belong to this farm.',
+            ], 422);
+        }
+
+        // Make sure the authenticated farmer owns the farm
+        if ((int) $productModel->farm->user_id !== (int) $request->user()->id) {
+            return response()->json([
+                'message' => 'You are not authorized to upload images for this product.',
+            ], 403);
+        }
+
+        // Permanently store the image
+        $path = $request->file('image')->store('products', 'public');
+
+        $image = $productModel->images()->create([
+            'image' => $path,
+            'is_primary' => $productModel->images()->count() === 0,
+        ]);
+
+        return response()->json($image, 201);
     }
 
-    // Make sure the authenticated farmer owns the farm
-    if ((int) $productModel->farm->user_id !== (int) $request->user()->id) {
-        return response()->json([
-            'message' => 'You are not authorized to upload images for this product.',
-        ], 403);
-    }
-
-    // Permanently store the image
-    $path = $request->file('image')->store('products', 'public');
-
-    $image = $productModel->images()->create([
-        'image' => $path,
-        'is_primary' => $productModel->images()->count() === 0,
-    ]);
-
-    return response()->json($image, 201);
-}
-    
     public function destroyImage(
         Request $request,
         Farm $farm,

@@ -17,7 +17,10 @@ class ProductController extends Controller
 
     public function index(Request $request)
     {
-        $query = Product::query()->where('is_active', true)->with('farm', 'category', 'images');
+        $query = Product::query()
+            ->where('is_active', true)
+            ->where('approval_status', 'approved')
+            ->with('farm', 'category', 'images');
 
         if ($request->filled('category_id')) {
             $query->where('category_id', $request->category_id);
@@ -28,7 +31,7 @@ class ProductController extends Controller
         }
 
         if ($request->filled('search')) {
-            $query->where('name', 'like', '%' . $request->search . '%');
+            $query->where('name', 'like', '%'.$request->search.'%');
         }
 
         return $query->latest()->paginate(20);
@@ -36,6 +39,8 @@ class ProductController extends Controller
 
     public function show(Product $product)
     {
+        abort_unless($product->is_active && $product->approval_status === 'approved', 404);
+
         return $product->load('farm', 'category', 'images');
     }
 

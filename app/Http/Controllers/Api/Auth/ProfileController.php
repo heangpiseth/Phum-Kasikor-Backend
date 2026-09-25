@@ -33,7 +33,10 @@ class ProfileController extends Controller
     public function chooseRole(Request $request)
     {
         $data = $request->validate([
-            'role' => ['required', Rule::enum(UserRole::class)],
+            'role' => ['required', Rule::in([
+                UserRole::CUSTOMER->value,
+                UserRole::FARMER->value,
+            ])],
         ]);
 
         $request->user()->update($data);
@@ -72,7 +75,6 @@ class ProfileController extends Controller
 
         return $user->fresh();
     }
-
 
     public function setupLocation(Request $request)
     {
